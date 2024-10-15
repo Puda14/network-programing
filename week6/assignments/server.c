@@ -11,10 +11,10 @@
 #define TIMEOUT 5
 #define MAX_CLIENTS 10
 
-// Improved XOR cipher with more security (example: multiple keys)
-void improved_xor_cipher(char *data, const char *key, int key_len) {
-    for (int i = 0; data[i] != '\0'; i++) {
-        data[i] ^= key[i % key_len];
+// Updated XOR cipher that works based on data length
+void improved_xor_cipher(char *data, const char *key, int key_len, int data_len) {
+    for (int i = 0; i < data_len; i++) {
+        data[i] ^= key[i % key_len];  // Use key in a cyclic manner
     }
 }
 
@@ -30,19 +30,13 @@ int main() {
     };
     int num_messages = sizeof(messages) / sizeof(messages[0]);
     struct sockaddr_in servaddr, cliaddr;
-    int client_sockets[MAX_CLIENTS];
     fd_set readfds;
     struct timeval tv;
     socklen_t len;
-    int max_sd, activity, n;
+    int n;
 
     // Initialize random seed for rand()
     srand(time(NULL));
-
-    // Initialize all client sockets to 0
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        client_sockets[i] = 0;
-    }
 
     // Create UDP socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -69,24 +63,12 @@ int main() {
     while (1) {
         FD_ZERO(&readfds);
         FD_SET(sockfd, &readfds);
-        max_sd = sockfd;
 
-        // Add client sockets to the set
-        for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (client_sockets[i] > 0) {
-                FD_SET(client_sockets[i], &readfds);
-            }
-            if (client_sockets[i] > max_sd) {
-                max_sd = client_sockets[i];
-            }
-        }
-
-        // Set timeout values
         tv.tv_sec = TIMEOUT;
         tv.tv_usec = 0;
 
-        // Wait for activity on one of the sockets
-        activity = select(max_sd + 1, &readfds, NULL, NULL, &tv);
+        // Wait for activity on the socket
+        int activity = select(sockfd + 1, &readfds, NULL, NULL, &tv);
 
         if (activity == -1) {
             perror("select error");
@@ -97,7 +79,6 @@ int main() {
             continue;
         }
 
-        // If there's activity on the server socket, handle new client
         if (FD_ISSET(sockfd, &readfds)) {
             len = sizeof(cliaddr);
             n = recvfrom(sockfd, buffer, MAXLINE, 0, (struct sockaddr *)&cliaddr, &len);
@@ -105,28 +86,23 @@ int main() {
 
             printf("Received message from client: %s\n", buffer);
 
-            // Add the client to the list of active clients
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (client_sockets[i] == 0) {
-                    client_sockets[i] = sockfd;
-                    break;
-                }
-            }
-
-            // Select a random message
+            // Select a random message to send to client
             int random_index = rand() % num_messages;
             char *selected_message = messages[random_index];
 
-            // Encrypt the selected message with an improved XOR cipher
+            // Encrypt the message using the improved XOR cipher
             char key[] = "ComplexKey";
             int key_len = strlen(key);
             char msg_to_send[MAXLINE];
             strncpy(msg_to_send, selected_message, MAXLINE - 1);
-            msg_to_send[MAXLINE - 1] = '\0';
+            msg_to_send[MAXLINE - 1] = '\0'; // Ensure null-termination
 
-            improved_xor_cipher(msg_to_send, key, key_len);
+            // Encrypt the message based on its length
+            int msg_len = strlen(msg_to_send);
+            improved_xor_cipher(msg_to_send, key, key_len, msg_len);
 
-            sendto(sockfd, msg_to_send, strlen(msg_to_send), 0, (struct sockaddr *)&cliaddr, len);
+            // Send encrypted message to the client
+            sendto(sockfd, msg_to_send, msg_len, 0, (struct sockaddr *)&cliaddr, len);
             printf("Encrypted message sent to client: %s\n", selected_message);
         }
     }

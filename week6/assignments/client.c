@@ -7,12 +7,12 @@
 
 #define PORT 8080
 #define MAXLINE 1024
-#define TIMEOUT 5  // 5 seconds timeout for select()
+#define TIMEOUT 5
 
-// Improved XOR cipher for encryption/decryption
-void improved_xor_cipher(char *data, const char *key, int key_len) {
-    for (int i = 0; data[i] != '\0'; i++) {
-        data[i] ^= key[i % key_len];
+// Updated XOR cipher for encryption/decryption based on data length
+void improved_xor_cipher(char *data, const char *key, int key_len, int data_len) {
+    for (int i = 0; i < data_len; i++) {
+        data[i] ^= key[i % key_len];  // Use key in a cyclic manner
     }
 }
 
@@ -22,6 +22,7 @@ int main() {
     char *response = "Response from client";
     struct sockaddr_in servaddr, recv_servaddr;
     char *server_ip = "127.0.0.1";  // Server IP address
+    socklen_t len = sizeof(recv_servaddr);
 
     // Create socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -37,7 +38,7 @@ int main() {
     servaddr.sin_port = htons(PORT);
     inet_pton(AF_INET, server_ip, &servaddr.sin_addr);
 
-    // Send message to server
+    // Send initial message to server
     sendto(sockfd, response, strlen(response), 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
     printf("Message sent to server.\n");
 
@@ -63,14 +64,14 @@ int main() {
     }
 
     // Receive encrypted message from server
-    socklen_t len = sizeof(recv_servaddr);
     int n = recvfrom(sockfd, buffer, MAXLINE, 0, (struct sockaddr *)&recv_servaddr, &len);
     buffer[n] = '\0';
 
-    // XOR decryption
+    // XOR decryption with correct data length
     char key[] = "ComplexKey";
     int key_len = strlen(key);
-    improved_xor_cipher(buffer, key, key_len);
+    improved_xor_cipher(buffer, key, key_len, n);
+
     printf("Decrypted message from server: %s\n", buffer);
 
     // Verify server address using memcmp()
@@ -78,6 +79,41 @@ int main() {
         printf("Verified: Message from the correct server.\n");
     } else {
         printf("Warning: Message from an unknown server.\n");
+    }
+
+    while (1) {
+        char response[MAXLINE];
+
+        // Get user input for the message
+        printf("Enter message to send to server: ");
+        fgets(response, MAXLINE, stdin);
+        response[strcspn(response, "\n")] = '\0';  // Remove newline
+
+        // Send the message to the server
+        sendto(sockfd, response, strlen(response), 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
+        printf("Message sent to server.\n");
+
+        FD_ZERO(&readfds);
+        FD_SET(sockfd, &readfds);
+        tv.tv_sec = TIMEOUT;
+        tv.tv_usec = 0;
+
+        activity = select(sockfd + 1, &readfds, NULL, NULL, &tv);
+        if (activity == -1) {
+            perror("select error");
+            close(sockfd);
+            exit(EXIT_FAILURE);
+        } else if (activity == 0) {
+            printf("Timeout: No response from server.\n");
+            continue;
+        }
+
+        n = recvfrom(sockfd, buffer, MAXLINE, 0, (struct sockaddr *)&recv_servaddr, &len);
+        buffer[n] = '\0';
+
+        // Decrypt response from server
+        improved_xor_cipher(buffer, key, key_len, n);
+        printf("Decrypted message from server: %s\n", buffer);
     }
 
     close(sockfd);
