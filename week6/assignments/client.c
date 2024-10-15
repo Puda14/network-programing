@@ -9,10 +9,10 @@
 #define MAXLINE 1024
 #define TIMEOUT 5  // 5 seconds timeout for select()
 
-// XOR cipher function for encryption/decryption
-void xor_cipher(char *data, char key) {
+// Improved XOR cipher for encryption/decryption
+void improved_xor_cipher(char *data, const char *key, int key_len) {
     for (int i = 0; data[i] != '\0'; i++) {
-        data[i] ^= key;
+        data[i] ^= key[i % key_len];
     }
 }
 
@@ -65,11 +65,12 @@ int main() {
     // Receive encrypted message from server
     socklen_t len = sizeof(recv_servaddr);
     int n = recvfrom(sockfd, buffer, MAXLINE, 0, (struct sockaddr *)&recv_servaddr, &len);
-    buffer[n] = '\0';  // Ensure string termination
+    buffer[n] = '\0';
 
     // XOR decryption
-    char key = 'K';
-    xor_cipher(buffer, key);
+    char key[] = "ComplexKey";
+    int key_len = strlen(key);
+    improved_xor_cipher(buffer, key, key_len);
     printf("Decrypted message from server: %s\n", buffer);
 
     // Verify server address using memcmp()
