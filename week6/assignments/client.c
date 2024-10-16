@@ -21,8 +21,8 @@ int main() {
     char buffer[MAXLINE];
     char *response = "Response from client";
     struct sockaddr_in servaddr, recv_servaddr;
+    socklen_t len = sizeof(recv_servaddr);  // Length of the sockaddr structure
     char *server_ip = "127.0.0.1";  // Server IP address
-    socklen_t len = sizeof(recv_servaddr);
 
     // Create socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -31,15 +31,20 @@ int main() {
     }
 
     memset(&servaddr, 0, sizeof(servaddr));
-    memset(&recv_servaddr, 0, sizeof(recv_servaddr));
 
     // Fill server information (IP and port)
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(PORT);
     inet_pton(AF_INET, server_ip, &servaddr.sin_addr);
 
-    // Send initial message to server
-    sendto(sockfd, response, strlen(response), 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
+    // Connect to the server to optimize UDP communication
+    if (connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+        perror("Connect failed");
+        close(sockfd);
+        exit(EXIT_FAILURE);
+    }
+
+    sendto(sockfd, response, strlen(response), 0, NULL, 0);
     printf("Message sent to server.\n");
 
     // Use select() to handle timeout
@@ -87,10 +92,9 @@ int main() {
         // Get user input for the message
         printf("Enter message to send to server: ");
         fgets(response, MAXLINE, stdin);
-        response[strcspn(response, "\n")] = '\0';  // Remove newline
+        response[strcspn(response, "\n")] = '\0';
 
-        // Send the message to the server
-        sendto(sockfd, response, strlen(response), 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
+        sendto(sockfd, response, strlen(response), 0, NULL, 0);
         printf("Message sent to server.\n");
 
         FD_ZERO(&readfds);
